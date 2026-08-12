@@ -1,3 +1,4 @@
+"""Tests for the pdf_perceptual_compare comparator module."""
 from pdf_perceptual_compare.pdf import render_page_pairs
 from pdf_perceptual_compare.comparator import (
     ComparisonOptions,
@@ -23,6 +24,11 @@ pytest.importorskip("skimage")
 
 
 def test_render_page_result_colors_failures_only_for_terminals() -> None:
+    """Verify that failure colors are only applied in terminal output.
+
+    Checks that render_page_result prefixes failures with ANSI red codes when
+    use_color=True and plain text otherwise.
+    """
     failure = PageResult(1, False, 0, 0, 0.9, 0.9, 0.9, 0.9, 0.1, "FAIL")
 
     assert render_page_result(failure, use_color=True).startswith("\033[31m")
@@ -50,6 +56,11 @@ requires_poppler = pytest.mark.skipif(
 
 
 def test_compare_page_accepts_identical_images() -> None:
+    """Verify that compare_page returns PASS for identical images.
+
+    Compares two identical 16x16 RGB images and confirms the result has verdict
+    'PASS', identical=True, and SSIM=1.0.
+    """
     image = zeros((16, 16, 3), dtype=uint8)
 
     result = compare_page(image, image.copy(), page=1,
@@ -61,6 +72,7 @@ def test_compare_page_accepts_identical_images() -> None:
 
 
 def test_compare_page_rejects_different_dimensions() -> None:
+    """Verify that compare_page returns FAIL for mismatched dimensions."""
     result = compare_page(
         zeros((16, 16, 3), dtype=uint8),
         zeros((15, 16, 3), dtype=uint8),
@@ -72,6 +84,7 @@ def test_compare_page_rejects_different_dimensions() -> None:
 
 
 def test_crop_for_shift_returns_matching_overlap() -> None:
+    """Verify that crop_for_shift returns images with matching overlap."""
     image = zeros((10, 10, 3), dtype=uint8)
 
     shifted_a, shifted_b = crop_for_shift(image, image, shift_x=2, shift_y=-1)
@@ -82,6 +95,12 @@ def test_crop_for_shift_returns_matching_overlap() -> None:
 def test_render_page_pairs_returns_paths_in_page_order(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
+    """Verify that render_page_pairs returns paths in page order.
+
+    Mocks the rendering function to return predictable filenames and confirms
+    the output list matches expected (a-0001.png, b-0001.png), (a-0002.png,
+    b-0002.png).
+    """
     def fake_render_page(pdf, page, dpi, output_base):
         return output_base.with_suffix(".png")
 
@@ -106,6 +125,11 @@ def test_render_page_pairs_returns_paths_in_page_order(
 def test_render_page_pairs_runs_rendering_concurrently(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
+    """Verify that render_page_pairs runs rendering concurrently.
+
+    Uses a Barrier and Lock to track concurrent execution and confirms
+    maximum_active reaches 2 when jobs=2 is specified.
+    """
     barrier = Barrier(2)
     lock = Lock()
     active = 0
@@ -143,6 +167,12 @@ def test_render_page_pairs_runs_rendering_concurrently(
 def test_compare_rendered_pages_runs_comparisons_concurrently(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
+    """Verify that compare_rendered_pages runs comparisons concurrently.
+
+    Uses a Barrier and Lock to track concurrent execution and confirms
+    maximum_active reaches 2 when jobs=2 is specified. Also verifies both pages
+    are compared (page set equals {1, 2}).
+    """
     barrier = Barrier(2)
     lock = Lock()
     active = 0
@@ -191,7 +221,22 @@ def run_comparison(
     candidate: Path,
     json_report: Path | None = None,
 ) -> int:
-    """Run the CLI with deterministic, low-concurrency fixture settings."""
+    """Run the CLI with deterministic, low-concurrency fixture settings.
+
+    Executes pdf-perceptual-compare with the given files and optional JSON
+    report path, patching sys.argv to ensure consistent argument parsing.
+
+    Args:
+        monkeypatch: pytest.MonkeyPatch instance for test isolation.
+        original (Path): Path to the original PDF file.
+        candidate (Path): Path to the candidate PDF file.
+        json_report (Path | None, optional): Optional path for JSON report
+            output.
+
+    Returns:
+        int: The exit code from main(). 0 indicates success, non-zero indicates
+            failure.
+    """
     arguments = [
         "pdf-perceptual-compare",
         str(original),
@@ -214,6 +259,11 @@ def test_dietpdf_compression_preserves_all_pages(
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
 ) -> None:
+    """Verify that dietpdf compression preserves all pages.
+
+    Runs the comparison against a dietpdf-compressed file and confirms all 3
+    pages pass with zero failures in both CLI output and JSON report.
+    """
     report = tmp_path / "dietpdf.json"
     assert run_comparison(monkeypatch, ORIGINAL_PDF, DIETPDF_PDF, report) == 0
 
@@ -238,6 +288,12 @@ def test_other_compressed_pdfs_report_at_least_one_failed_page(
     candidate: Path,
     tmp_path: Path,
 ) -> None:
+    """Verify that other compressed PDFs report at least one failed page.
+
+    Tests multiple compression tools (Adobe Standard, Filevert, iLovePDF,
+    Smallpdf) and confirms each produces a non-empty failure count in both CLI
+    output and JSON report.
+    """
     report = tmp_path / f"{candidate.stem}.json"
     assert run_comparison(monkeypatch, ORIGINAL_PDF, candidate, report) == 1
 
@@ -256,6 +312,11 @@ def test_invalid_pdf_raises_an_error(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    """Verify that invalid PDFs raise a CalledProcessError.
+
+    Tests with an intentionally malformed PDF and confirms the CLI exits with an
+    error code without generating a JSON report file.
+    """
     report = tmp_path / "invalid.json"
 
     with pytest.raises(CalledProcessError):
@@ -270,6 +331,11 @@ def test_different_page_counts_report_an_error(
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
 ) -> None:
+    """Verify that different page counts report an error.
+
+    Tests with a PDF having a mismatched page count and confirms the CLI outputs
+    the specific failure message while not generating a JSON report.
+    """
     report = tmp_path / "different-page-count.json"
     assert (
         run_comparison(monkeypatch, ORIGINAL_PDF,
