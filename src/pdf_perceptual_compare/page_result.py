@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 
 @dataclass
+# pylint: disable=too-many-instance-attributes
 class PageResult:
     """A dataclass representing the per-page visual comparison result between
     two images.
