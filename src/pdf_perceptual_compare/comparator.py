@@ -23,6 +23,18 @@ def crop_for_shift(
 ) -> tuple[ndarray, ndarray]:
     """Return overlapping areas after shifting ``candidate`` by
     ``(shift_x, shift_y)`` relative to ``original``.
+
+    Args:
+        original (ndarray): The reference image array.
+        candidate (ndarray): The shifted image array to align with the original.
+        shift_x (int): Horizontal pixel offset of the candidate relative to the
+            original.
+        shift_y (int): Vertical pixel offset of the candidate relative to the
+            original.
+
+    Returns:
+        tuple[ndarray, ndarray]: A tuple containing the cropped original and
+            candidate arrays that overlap after applying the specified shifts.
     """
     height, width = original.shape[:2]
 
@@ -40,7 +52,23 @@ def alignment_score(
     shift_x: int,
     shift_y: int
 ) -> float:
-    """Calculate a fast, downsampled luminance error for a candidate shift."""
+    """Calculate a fast, downsampled luminance error for a candidate shift.
+
+    Computes the mean squared difference between the luminance channels of two
+    downsampled image regions after applying the specified pixel shifts.
+
+    Args:
+        original (ndarray): The reference image array.
+        candidate (ndarray): The shifted image array to align with the original.
+        shift_x (int): Horizontal pixel offset of the candidate relative to the
+            original.
+        shift_y (int): Vertical pixel offset of the candidate relative to the
+            original.
+
+    Returns:
+        float: The mean squared luminance difference between the two
+            downsampled regions.
+    """
     shifted_original, shifted_candidate = crop_for_shift(
         original,
         candidate,
@@ -62,7 +90,21 @@ def best_integer_shift(
     candidate: ndarray,
     max_shift: int
 ) -> tuple[int, int]:
-    """Find the best integer translation in the configured range."""
+    """Find the best integer translation in the configured range.
+
+    Searches for the optimal horizontal and vertical pixel shift that minimizes
+    luminance difference between two images within the specified bounds.
+
+    Args:
+        original (ndarray): The reference image array.
+        candidate (ndarray): The shifted image array to align with the original.
+        max_shift (int): Maximum absolute shift in pixels to search for each
+            axis.
+
+    Returns:
+        tuple[int, int]: A tuple ``(shift_x, shift_y)`` representing the best
+            integer translation found within the specified range.
+    """
     if max_shift <= 0:
         return 0, 0
 
@@ -77,7 +119,20 @@ def best_integer_shift(
 
 
 def blur_rgb(image: ndarray, radius: float) -> ndarray:
-    """Apply a Gaussian blur, returning the original array when disabled."""
+    """Apply a Gaussian blur, returning the original array when disabled.
+
+    Converts the input array to RGB via PIL if necessary, applies a Gaussian
+    blur filter, and returns the result as an unsigned 8-bit integer array.
+
+    Args:
+        image (ndarray): The source image array.
+        radius (float): The sigma value for the Gaussian blur kernel. A value of
+            zero or negative disables blurring and returns the original array.
+
+    Returns:
+        ndarray: The blurred image as an unsigned 8-bit integer array, or the
+            original array if ``radius <= 0``.
+    """
     if radius <= 0:
         return image
 
@@ -93,7 +148,21 @@ def ssim_with_map(
     original: ndarray,
     candidate: ndarray
 ) -> tuple[float, ndarray]:
-    """Calculate global SSIM and its two-dimensional similarity map."""
+    """Calculate global SSIM and its two-dimensional similarity map.
+
+    Computes the Structural Similarity Index (SSIM) between two images using
+    skimage's implementation with Gaussian weighting for improved robustness.
+
+    Args:
+        original (ndarray): The reference image array.
+        candidate (ndarray): The comparison image array.
+
+    Returns:
+        tuple[float, ndarray]: A tuple containing the global SSIM score as a
+        float and the 2D similarity map as an unsigned 8-bit integer array. If
+        the map is three-dimensional, it is averaged across channels before
+        returning.
+    """
     result = structural_similarity(
         original,
         candidate,
@@ -115,7 +184,20 @@ def ssim_with_map(
 
 
 def tile_means(score_map: ndarray, tile: int) -> ndarray:
-    """Calculate mean SSIM values for sufficiently large image tiles."""
+    """Calculate mean SSIM values for sufficiently large image tiles.
+
+    Divides the similarity map into non-overlapping blocks and computes the
+    average SSIM value within each block that meets a minimum size threshold.
+
+    Args:
+        score_map (ndarray): The 2D structural similarity index map.
+        tile (int): The side length in pixels of each square tile to evaluate.
+
+    Returns:
+        ndarray: A one-dimensional array containing the mean SSIM value for each
+        valid tile, sorted by their top-left position. If no tiles meet the size
+        threshold, returns a single-element array with the overall map mean.
+    """
     height, width = score_map.shape
     values: list[float] = []
 
@@ -141,7 +223,24 @@ def save_diagnostic(
     score_map: ndarray,
     output: Path
 ) -> None:
-    """Save amplified differences and an SSIM similarity map for a failed page."""
+    """Save amplified differences and an SSIM similarity map for a failed page.
+
+    Generates two diagnostic images in the specified output directory:
+        1. An amplified difference image highlighting pixel-level discrepancies.
+        2. A normalized SSIM similarity map visualizing regional agreement.
+
+    Args:
+        original (ndarray): The reference image array.
+        candidate (ndarray): The comparison image array.
+        score_map (ndarray): The structural similarity index map to save as an
+            image.
+        output (Path): The directory path where diagnostic images will be
+            written.
+
+    Raises:
+        FileNotFoundError: If the output directory cannot be created due to
+            insufficient permissions or a missing parent directory.
+    """
     def transform(value):
         return min(255, value * 8)
 
@@ -169,8 +268,27 @@ def compare_page(
     options: ComparisonOptions,
     failure_dir: Path | None = None,
 ) -> PageResult:
-    """Compare two rendered pages and return their perceptual result."""
+    """Compare two rendered pages and return their perceptual result.
 
+    Performs a multi-stage comparison between two image arrays to determine
+    whether they are identical or similar within configured thresholds. The
+    process includes pixel-identical checks, integer shift alignment, global
+    SSIM computation, local tile-based statistics, and blurred SSIM evaluation.
+
+    Args:
+        original (ndarray): The reference page image array.
+        candidate (ndarray): The comparison page image array.
+        page (int): The page number for diagnostic file naming.
+        options (ComparisonOptions): Configuration object containing thresholds
+            for alignment, tile size, SSIM, local statistics, and bad fraction.
+        failure_dir (Path | None, optional): Directory path to save diagnostic
+            images if the comparison fails. Defaults to ``None``.
+
+    Returns:
+        PageResult: An instance containing all computed metrics including shift
+            values, global and blurred SSIM scores, local statistics, and a
+            final verdict string.
+    """
     # The two pages must be the same size to be considered identical.
     if original.shape != candidate.shape:
         return PageResult(

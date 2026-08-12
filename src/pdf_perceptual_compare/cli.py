@@ -18,14 +18,24 @@ from .page_result import PageResult
 from .comparison_options import ComparisonOptions
 from .pdf import die, load_rgb, page_count, render_page_pairs, require_command
 
-
 # ANSI escape codes for terminal colorization
 RED = "\033[31m"
 RESET = "\033[0m"
 
 
 def positive_integer(value: str) -> int:
-    """Return a strictly positive command-line integer."""
+    """Return a strictly positive command-line integer.
+
+    Args:
+        value (str): The string representation of the integer to parse.
+
+    Returns:
+        int: A positive integer greater than or equal to 1.
+
+    Raises:
+        ArgumentTypeError: If the input cannot be parsed as an integer
+            or if the resulting integer is less than 1.
+    """
     integer = int(value)
 
     if integer < 1:
@@ -35,7 +45,11 @@ def positive_integer(value: str) -> int:
 
 
 def parse_args() -> Namespace:
-    """Parse command-line arguments."""
+    """Parse command-line arguments for the PDF comparison tool.
+
+    Returns:
+        Namespace: Parsed argument namespace containing all CLI options.
+    """
     parser = ArgumentParser(
         description="Perceptual page-by-page comparison of two PDFs."
     )
@@ -136,7 +150,14 @@ def parse_args() -> Namespace:
 
 
 def options_from_args(args: Namespace) -> ComparisonOptions:
-    """Build comparison options from parsed CLI arguments."""
+    """Build comparison options from parsed CLI arguments.
+
+    Args:
+        args (Namespace): The namespace object containing all CLI arguments.
+
+    Returns:
+        ComparisonOptions: A fully configured comparison options instance.
+    """
     return ComparisonOptions(
         tile=args.tile,
         blur=args.blur,
@@ -154,7 +175,16 @@ def write_json_report(
     pages: int,
     results: list[PageResult]
 ) -> None:
-    """Write an optional machine-readable comparison report."""
+    """Write an optional machine-readable comparison report.
+
+    Args:
+        args (Namespace): The parsed CLI arguments namespace.
+        pages (int): Total number of pages compared.
+        results (list[PageResult]): List of page comparison result objects.
+
+    Returns:
+        None: Writes the JSON report to the path specified by `args.json`.
+    """
     if args.json is None:
         return
 
@@ -198,6 +228,18 @@ def compare_rendered_page(
     keep_rendered: Path | None,
 ) -> PageResult:
     """Load and compare one rendered page pair, optionally retaining its images.
+
+    Args:
+        page (int): The page number being compared.
+        original_png (Path): Path to the original rendered PNG image.
+        candidate_png (Path): Path to the candidate rendered PNG image.
+        options (ComparisonOptions): Comparison configuration parameters.
+        failure_dir (Path | None): Directory for saving diagnostic images on
+            failure.
+        keep_rendered (Path | None): Directory for keeping rendered page copies.
+
+    Returns:
+        PageResult: A result object containing comparison metrics and verdict.
     """
     if keep_rendered:
         copy2(original_png, keep_rendered / f"original-{page:04d}.png")
@@ -219,7 +261,20 @@ def compare_rendered_pages(
     keep_rendered: Path | None,
     jobs: int,
 ) -> Iterator[PageResult]:
-    """Compare rendered pages concurrently, yielding results as they finish."""
+    """Compare rendered pages concurrently, yielding results as they finish.
+
+    Args:
+        rendered_pages (list[tuple[Path, Path]]): List of page image pairs.
+        options (ComparisonOptions): Comparison configuration parameters.
+        failure_dir (Path | None): Directory for saving diagnostic images on
+            failure.
+        keep_rendered (Path | None): Directory for keeping rendered page copies.
+        jobs (int): Maximum number of concurrent worker threads.
+
+    Yields:
+        PageResult: A result object containing comparison metrics and verdict,
+            yielded as each page completes processing.
+    """
     with ThreadPoolExecutor(max_workers=jobs) as executor:
         futures = [
             executor.submit(
@@ -240,7 +295,15 @@ def compare_rendered_pages(
 
 
 def render_page_result(result: PageResult, use_color: bool) -> str:
-    """Format one page result, highlighting failed comparisons in a terminal."""
+    """Format one page result, highlighting failed comparisons in a terminal.
+
+    Args:
+        result (PageResult): The page comparison result to format.
+        use_color (bool): Whether to apply ANSI color codes for failed results.
+
+    Returns:
+        str: A formatted string representation of the page result.
+    """
     shift = (
         f" shift={result.shift_x:+d},{result.shift_y:+d}"
         if result.shift_x or result.shift_y
@@ -264,7 +327,7 @@ def render_page_result(result: PageResult, use_color: bool) -> str:
 
 
 def main() -> int:
-    """Run the command-line application."""
+    """Run the command-line application for perceptual PDF comparison."""
     args = parse_args()
     use_color = stdout.isatty()
 
