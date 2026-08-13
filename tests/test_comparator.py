@@ -11,6 +11,8 @@ from pdf_perceptual_compare.cli import (
     main,
     render_page_result,
 )
+from pdf_perceptual_compare.verdict import Verdict
+
 from threading import Barrier, Lock, BrokenBarrierError
 from json import loads
 from pathlib import Path
@@ -29,7 +31,7 @@ def test_render_page_result_colors_failures_only_for_terminals() -> None:
     Checks that render_page_result prefixes failures with ANSI red codes when
     use_color=True and plain text otherwise.
     """
-    failure = PageResult(1, False, 0, 0, 0.9, 0.9, 0.9, 0.9, 0.1, "FAIL")
+    failure = PageResult(1, False, 0, 0, 0.9, 0.9, 0.9, 0.9, 0.1, Verdict.FAIL)
 
     assert render_page_result(failure, use_color=True).startswith("\033[31m")
     assert render_page_result(
@@ -66,7 +68,7 @@ def test_compare_page_accepts_identical_images() -> None:
     result = compare_page(image, image.copy(), page=1,
                           options=ComparisonOptions())
 
-    assert result.verdict == "PASS"
+    assert result.verdict.is_pass
     assert result.identical is True
     assert result.ssim == 1.0
 
@@ -80,7 +82,7 @@ def test_compare_page_rejects_different_dimensions() -> None:
         options=ComparisonOptions(),
     )
 
-    assert result.verdict == "FAIL(size)"
+    assert result.verdict == Verdict.FAIL_SIZE
 
 
 def test_crop_for_shift_returns_matching_overlap() -> None:

@@ -11,6 +11,8 @@ from numpy import (
 from PIL import Image, ImageChops, ImageFilter
 from skimage.metrics import structural_similarity
 
+from pdf_perceptual_compare.verdict import Verdict
+
 from .comparison_options import ComparisonOptions
 from .page_result import PageResult
 
@@ -301,7 +303,7 @@ def compare_page(
             local_p01=0.0,
             local_min=0.0,
             local_bad_fraction=1.0,
-            verdict="FAIL(size)"
+            verdict=Verdict.FAIL_SIZE
         )
 
     # If the two pages are pixel-identical, we can skip the rest of the
@@ -317,7 +319,7 @@ def compare_page(
             local_p01=1.0,
             local_min=1.0,
             local_bad_fraction=0.0,
-            verdict="PASS"
+            verdict=Verdict.PASS
         )
 
     # Calculate the best integer translation of the candidate relative to the
@@ -364,11 +366,11 @@ def compare_page(
     )
 
     # Determine the final verdict based on the raw and blurred SSIM results.
-    verdict = "PASS" if raw_ok or blur_ok else "FAIL"
+    verdict = Verdict.PASS if raw_ok or blur_ok else Verdict.FAIL
 
     # If the page fails and a failure directory is specified, save diagnostic
     # images.
-    if verdict == "FAIL" and failure_dir is not None:
+    if verdict.is_fail and failure_dir is not None:
         save_diagnostic(
             shifted_original,
             shifted_candidate,

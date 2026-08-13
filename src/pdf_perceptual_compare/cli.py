@@ -17,6 +17,7 @@ from .page_result import PageResult
 from .comparison_options import ComparisonOptions
 from .pdf import die, load_rgb, page_count, render_page_pairs, require_command
 from .arguments import parse_args, options_from_args
+from .verdict import Verdict
 
 # ANSI escape codes for terminal colorization
 RED = "\033[31m"
@@ -44,7 +45,7 @@ def write_json_report(
     failed = [
         result
         for result in results
-        if not result.verdict.startswith("PASS")
+        if result.verdict.is_fail
     ]
 
     payload = {
@@ -67,7 +68,7 @@ def write_json_report(
     args.json.parent.mkdir(parents=True, exist_ok=True)
 
     args.json.write_text(
-        dumps(payload, indent=2) + "\n",
+        dumps(payload, indent=2, default=str) + "\n",
         encoding="utf-8"
     )
 
@@ -173,7 +174,7 @@ def render_page_result(result: PageResult, use_color: bool) -> str:
         f"bad={result.local_bad_fraction:7.3%}{shift}"
     )
 
-    if use_color and not result.verdict.startswith("PASS"):
+    if use_color and result.verdict.is_fail:
         return f"{RED}{line}{RESET}"
 
     return line
@@ -257,7 +258,7 @@ def main() -> int:
     failed = [
         result
         for result in results
-        if not result.verdict.startswith("PASS")
+        if result.verdict.is_fail
     ]
 
     identical = sum(result.identical for result in results)

@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 
+from .verdict import Verdict
+
 
 @dataclass
 # pylint: disable=too-many-instance-attributes
@@ -24,8 +26,8 @@ class PageResult:
             this region.
         local_bad_fraction (float): Fraction of pixels that differ
             significantly from expected values.
-        verdict (str): A textual summary of the comparison result, "PASS",
-            "FAIL" or "FAIL(size)".
+        verdict (Verdict): A textual summary of the comparison result,
+            Verdict.PASS, Verdict.FAIL or Verdict.FAIL_SIZE.
     """
 
     page: int
@@ -37,4 +39,4 @@ class PageResult:
     local_p01: float
     local_min: float
     local_bad_fraction: float
-    verdict: str
+    verdict: Verdict
