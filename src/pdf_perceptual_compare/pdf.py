@@ -1,16 +1,16 @@
-"""PDF rendering helpers backed by Poppler utilities."""
+"""PDF rendering helpers backed by the python-poppler bindings."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
-from shutil import which
-from subprocess import CompletedProcess, run, PIPE
-from sys import stderr
 from pathlib import Path
+from sys import stderr
 
-from numpy import ndarray, asarray, uint8
+from numpy import asarray, ndarray, uint8
 from PIL import Image
+from poppler import PageRenderer, load_from_file
+from poppler.document import Document
 
 
 def die(message: str, code: int = 2) -> None:
@@ -27,44 +27,18 @@ def die(message: str, code: int = 2) -> None:
     raise SystemExit(code)
 
 
-def require_command(name: str) -> None:
-    """Ensure a required Poppler executable is available in PATH.
+def load_document(pdf: Path) -> Document:
+    """Load a PDF using python-poppler, with a CLI-friendly failure message."""
+    try:
+        return load_from_file(pdf)
+    except (OSError, RuntimeError, ValueError) as error:
+        die(f"could not open PDF {pdf}: {error}")
 
-    Args:
-        name (str): The command name to search for using ``which``.
-
-    Raises:
-        SystemExit: If the command cannot be found and exits with code 2.
-    """
-    if which(name) is None:
-        die(f"required command not found: {name}")
-
-
-def run_command(*args: str, capture: bool = False) -> CompletedProcess[str]:
-    """Run a Poppler command and propagate command failures.
-
-    Args:
-        *args (str): Command arguments to execute.
-        capture (bool, optional): Whether to capture stdout/stderr. Defaults to
-            False.
-
-    Returns:
-        CompletedProcess[str]: The result of the subprocess execution.
-
-    Raises:
-        CalledProcessError: If the command exits with a non-zero status code.
-    """
-    return run(
-        args,
-        check=True,
-        text=True,
-        stdout=PIPE if capture else None,
-        stderr=PIPE if capture else None,
-    )
+    raise SystemExit(2)
 
 
 def page_count(pdf: Path) -> int:
-    """Return the number of pages reported by ``pdfinfo``.
+    """Return the number of pages reported by python-poppler.
 
     Args:
         pdf (Path): The path to a PDF file.
@@ -73,21 +47,9 @@ def page_count(pdf: Path) -> int:
         int: The total page count of the PDF document.
 
     Raises:
-        SystemExit: If ``pdfinfo`` cannot determine the page count.
+        SystemExit: If python-poppler cannot determine the page count.
     """
-    pdfinfo_lines = run_command(
-        "pdfinfo",
-        str(pdf),
-        capture=True
-    ).stdout.splitlines()
-
-    for line in pdfinfo_lines:
-        if line.startswith("Pages:"):
-            return int(line.split(":", 1)[1].strip())
-
-    die(f"could not determine page count of {pdf}")
-
-    raise AssertionError("unreachable")
+    return load_document(pdf).pages
 
 
 def render_page(pdf: Path, page: int, dpi: int, output_base: Path) -> Path:
@@ -103,23 +65,27 @@ def render_page(pdf: Path, page: int, dpi: int, output_base: Path) -> Path:
         Path: The path to the generated PNG file.
 
     Raises:
-        SystemExit: If ``pdftoppm`` fails to produce an output file.
+        SystemExit: If python-poppler fails to render an output file.
     """
-    run_command(
-        "pdftoppm",
-        "-r", str(dpi),
-        "-f", str(page),
-        "-l", str(page),
-        "-singlefile",
-        "-png",
-        str(pdf),
-        str(output_base),
-    )
-
     output = output_base.with_suffix(".png")
 
+    try:
+        document = load_document(pdf)
+        image = PageRenderer().render_page(
+            document.create_page(page - 1),
+            xres=dpi,
+            yres=dpi
+        )
+
+        if not image.is_valid:
+            die(f"could not render page {page} of {pdf}")
+
+        image.save(str(output), "png", dpi)
+    except (OSError, RuntimeError, ValueError) as error:
+        die(f"could not render page {page} of {pdf}: {error}")
+
     if not output.exists():
-        die(f"pdftoppm did not produce {output}")
+        die(f"python-poppler did not produce {output}")
 
     return output
 
@@ -155,7 +121,7 @@ def render_page_pairs(
             candidate_page_path)``.
 
     Raises:
-        SystemExit: If ``pdftoppm`` fails to produce an output file.
+        SystemExit: If python-poppler fails to produce an output file.
     """
     with ThreadPoolExecutor(
         max_workers=jobs,

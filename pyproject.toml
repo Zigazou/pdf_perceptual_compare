@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pdf-perceptual-compare"
-version = "0.1.0"
+version = "1.0.0"
 description = "Compare PDF pages visually using perceptual metrics."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -13,6 +13,7 @@ authors = [{ name = "pdf-perceptual-compare contributors" }]
 dependencies = [
   "numpy>=1.24",
   "Pillow>=10.0",
+  "python-poppler>=0.4.1",
   "scikit-image>=0.21",
 ]
 

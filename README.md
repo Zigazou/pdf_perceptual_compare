@@ -5,20 +5,22 @@ rendered pages look, rather than by comparing PDF bytes or raw image pixels.
 It is useful when PDFs may differ internally (metadata, font embedding,
 compression, or generation tooling) but should render equivalently.
 
-For each matching page, the tool renders both PDFs as RGB PNGs with Poppler,
-then measures global and local Structural Similarity (SSIM). It exits with
-status `0` when every page passes and `1` when one or more pages fail, making
-it suitable for CI.
+For each matching page, the tool renders both PDFs as RGB PNGs with
+python-poppler, then measures global and local Structural Similarity (SSIM). It
+exits with status `0` when every page passes and `1` when one or more pages
+fail, making it suitable for CI.
 
 ## Requirements
 
 - Python 3.10 or newer
-- Poppler utilities: `pdfinfo` and `pdftoppm`
+- python-poppler
+- The Poppler C++ development library and a C++ build toolchain, which are
+  needed to build python-poppler from source
 
 For example, on Debian or Ubuntu:
 
 ```bash
-sudo apt install poppler-utils
+sudo apt install libpoppler-cpp-dev build-essential cmake python3-dev
 ```
 
 ## Installation

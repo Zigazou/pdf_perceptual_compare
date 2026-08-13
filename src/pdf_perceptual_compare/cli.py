@@ -3,22 +3,21 @@
 from __future__ import annotations
 
 from argparse import Namespace
-from json import dumps
-from shutil import copy2
-from sys import stdout
-from tempfile import TemporaryDirectory
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict
+from json import dumps
 from pathlib import Path
-from unittest import result
+from shutil import copy2
+from sys import stdout
+from tempfile import TemporaryDirectory
 
-from .comparator import compare_page
-from .page_result import PageResult
-from .comparison_options import ComparisonOptions
-from .pdf import die, load_rgb, page_count, render_page_pairs, require_command
-from .arguments import parse_args, options_from_args
 from .ansi import Ansi
+from .arguments import options_from_args, parse_args
+from .comparator import compare_page
+from .comparison_options import ComparisonOptions
+from .page_result import PageResult
+from .pdf import die, load_rgb, page_count, render_page_pairs
 
 
 def write_json_report(
@@ -188,10 +187,6 @@ def main() -> int:
     """Run the command-line application for perceptual PDF comparison."""
     args = parse_args()
     use_color = stdout.isatty()
-
-    # Check that required external commands are available.
-    require_command("pdfinfo")
-    require_command("pdftoppm")
 
     # Check that the input files exist.
     for pdf in (args.original, args.candidate):

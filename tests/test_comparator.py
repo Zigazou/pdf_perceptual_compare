@@ -1,27 +1,31 @@
 """Tests for the pdf_perceptual_compare comparator module."""
-from pdf_perceptual_compare.pdf import render_page_pairs
+
+from importlib.util import find_spec
+from json import loads
+from pathlib import Path
+from threading import Barrier, BrokenBarrierError, Lock
+
+import pytest
+from numpy import uint8, zeros
+
 from pdf_perceptual_compare.ansi import Ansi
+from pdf_perceptual_compare.cli import (
+    compare_rendered_pages,
+    main,
+    render_page_result,
+)
 from pdf_perceptual_compare.comparator import (
     ComparisonOptions,
     PageResult,
     compare_page,
     crop_for_shift,
 )
-from pdf_perceptual_compare.cli import (
-    compare_rendered_pages,
-    main,
-    render_page_result,
+from pdf_perceptual_compare.pdf import (
+    page_count,
+    render_page,
+    render_page_pairs
 )
 from pdf_perceptual_compare.verdict import Verdict
-
-from threading import Barrier, Lock, BrokenBarrierError
-from json import loads
-from pathlib import Path
-from shutil import which
-from subprocess import CalledProcessError
-
-from numpy import zeros, uint8
-import pytest
 
 pytest.importorskip("skimage")
 
@@ -52,9 +56,9 @@ COMPRESSED_PDFS_WITH_ERRORS = [
     FIXTURES_DIRECTORY / "compressed_with_smallpdf_simple.pdf",
 ]
 
-requires_poppler = pytest.mark.skipif(
-    which("pdfinfo") is None or which("pdftoppm") is None,
-    reason="PDF fixture tests require Poppler's pdfinfo and pdftoppm commands",
+requires_python_poppler = pytest.mark.skipif(
+    find_spec("poppler") is None,
+    reason="PDF fixture tests require python-poppler",
 )
 
 
@@ -125,8 +129,55 @@ def test_render_page_pairs_returns_paths_in_page_order(
     ]
 
 
+def test_python_poppler_provides_page_count_and_png_rendering(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path
+) -> None:
+    """Verify the binding supplies the page count and rendered PNG output."""
+    calls: list[object] = []
+
+    class FakeDocument:
+        pages = 3
+
+        def create_page(self, index: int) -> int:
+            calls.append(index)
+            return index
+
+    class FakeImage:
+        is_valid = True
+
+        def save(self, filename: str, image_format: str, dpi: int) -> None:
+            calls.append((image_format, dpi))
+            Path(filename).touch()
+
+    class FakeRenderer:
+        def render_page(self, page: int, *, xres: int, yres: int) -> FakeImage:
+            calls.append((page, xres, yres))
+            return FakeImage()
+
+    document = FakeDocument()
+
+    monkeypatch.setattr(
+        "pdf_perceptual_compare.pdf.load_from_file",
+        lambda path: document
+    )
+
+    monkeypatch.setattr(
+        "pdf_perceptual_compare.pdf.PageRenderer",
+        FakeRenderer
+    )
+
+    pdf = tmp_path / "input.pdf"
+    output = render_page(pdf, page=2, dpi=150, output_base=tmp_path / "page")
+
+    assert page_count(pdf) == 3
+    assert output == tmp_path / "page.png"
+    assert calls == [1, (1, 150, 150), ("png", 150)]
+
+
 def test_render_page_pairs_runs_rendering_concurrently(
-    monkeypatch: pytest.MonkeyPatch, tmp_path
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path
 ) -> None:
     """Verify that render_page_pairs runs rendering concurrently.
 
@@ -256,7 +307,7 @@ def run_comparison(
     return main()
 
 
-@requires_poppler
+@requires_python_poppler
 def test_dietpdf_compression_preserves_all_pages(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -283,7 +334,7 @@ def test_dietpdf_compression_preserves_all_pages(
     assert [result["verdict"] for result in payload["results"]] == ["PASS"] * 3
 
 
-@requires_poppler
+@requires_python_poppler
 @pytest.mark.parametrize("candidate", COMPRESSED_PDFS_WITH_ERRORS)
 def test_other_compressed_pdfs_report_at_least_one_failed_page(
     monkeypatch: pytest.MonkeyPatch,
@@ -310,25 +361,26 @@ def test_other_compressed_pdfs_report_at_least_one_failed_page(
                for result in payload["results"])
 
 
-@requires_poppler
+@requires_python_poppler
 def test_invalid_pdf_raises_an_error(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Verify that invalid PDFs raise a CalledProcessError.
+    """Verify that invalid PDFs raise a user-facing error.
 
     Tests with an intentionally malformed PDF and confirms the CLI exits with an
     error code without generating a JSON report file.
     """
     report = tmp_path / "invalid.json"
 
-    with pytest.raises(CalledProcessError):
+    with pytest.raises(SystemExit) as error:
         run_comparison(monkeypatch, ORIGINAL_PDF, INVALID_PDF, report)
 
+    assert error.value.code == 2
     assert not report.exists()
 
 
-@requires_poppler
+@requires_python_poppler
 def test_different_page_counts_report_an_error(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
