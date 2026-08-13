@@ -18,11 +18,7 @@ from .page_result import PageResult
 from .comparison_options import ComparisonOptions
 from .pdf import die, load_rgb, page_count, render_page_pairs, require_command
 from .arguments import parse_args, options_from_args
-from .verdict import Verdict
-
-# ANSI escape codes for terminal colorization
-RED = "\033[31m"
-RESET = "\033[0m"
+from .ansi import Ansi
 
 
 def write_json_report(
@@ -183,7 +179,7 @@ def render_page_result(result: PageResult, use_color: bool) -> str:
     )
 
     if use_color and result.verdict.is_fail:
-        return f"{RED}{line}{RESET}"
+        return f"{Ansi.RED}{line}{Ansi.RESET}"
 
     return line
 
@@ -206,7 +202,7 @@ def main() -> int:
     pages_a, pages_b = page_count(args.original), page_count(args.candidate)
     if pages_a != pages_b:
         message = f"FAIL: different number of pages: {pages_a} != {pages_b}"
-        print(f"{RED}{message}{RESET}" if use_color else message)
+        print(f"{Ansi.RED}{message}{Ansi.RESET}" if use_color else message)
 
         return 1
 

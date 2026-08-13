@@ -1,5 +1,6 @@
 """Tests for the pdf_perceptual_compare comparator module."""
 from pdf_perceptual_compare.pdf import render_page_pairs
+from pdf_perceptual_compare.ansi import Ansi
 from pdf_perceptual_compare.comparator import (
     ComparisonOptions,
     PageResult,
@@ -33,7 +34,7 @@ def test_render_page_result_colors_failures_only_for_terminals() -> None:
     """
     failure = PageResult(1, False, 0, 0, 0.9, 0.9, 0.9, 0.9, 0.1, Verdict.FAIL)
 
-    assert render_page_result(failure, use_color=True).startswith("\033[31m")
+    assert render_page_result(failure, use_color=True).startswith(Ansi.RED)
     assert render_page_result(
         failure, use_color=False).startswith("   1  FAIL")
 
