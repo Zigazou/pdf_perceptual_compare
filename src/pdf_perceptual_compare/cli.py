@@ -11,6 +11,7 @@ from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict
 from pathlib import Path
+from unittest import result
 
 from .comparator import compare_page
 from .page_result import PageResult
@@ -63,13 +64,19 @@ def write_json_report(
             "passed_pages": pages - len(failed),
             "failed_pages": len(failed),
         },
-        "results": [asdict(result) for result in results],
+        "results": [
+            {
+                **asdict(result),
+                "verdict": str(result.verdict),
+            }
+            for result in results
+        ],
     }
 
     args.json.parent.mkdir(parents=True, exist_ok=True)
 
     args.json.write_text(
-        dumps(payload, indent=2, default=str) + "\n",
+        dumps(payload, indent=2) + "\n",
         encoding="utf-8"
     )
 
@@ -186,8 +193,7 @@ def main() -> int:
     args = parse_args()
     use_color = stdout.isatty()
 
-    # Check that required external commands are available and that input files
-    # exist.
+    # Check that required external commands are available.
     require_command("pdfinfo")
     require_command("pdftoppm")
 
