@@ -23,6 +23,16 @@ For example, on Debian or Ubuntu:
 sudo apt install libpoppler-cpp-dev build-essential cmake python3-dev
 ```
 
+## Distribution
+
+```bash
+pip install build
+pip install twine
+
+python -m build
+python -m twine upload dist/*
+```
+
 ## Installation
 
 Install the package in the current environment:
