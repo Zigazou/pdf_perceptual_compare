@@ -26,6 +26,7 @@ RESET = "\033[0m"
 
 def write_json_report(
     args: Namespace,
+    options: ComparisonOptions,
     pages: int,
     results: list[PageResult]
 ) -> None:
@@ -55,7 +56,7 @@ def write_json_report(
         "parameters": {
             "dpi": args.dpi,
             "jobs": args.jobs,
-            **asdict(options_from_args(args)),
+            **asdict(options),
         },
         "summary": {
             "identical_pages": sum(result.identical for result in results),
@@ -273,6 +274,6 @@ def main() -> int:
         failed_pages = " ".join(str(result.page) for result in failed)
         print("Failed page(s)  : " + failed_pages)
 
-    write_json_report(args, pages_a, results)
+    write_json_report(args, options, pages_a, results)
 
     return int(bool(failed))
