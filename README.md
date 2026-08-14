@@ -5,23 +5,15 @@ rendered pages look, rather than by comparing PDF bytes or raw image pixels.
 It is useful when PDFs may differ internally (metadata, font embedding,
 compression, or generation tooling) but should render equivalently.
 
-For each matching page, the tool renders both PDFs as RGB PNGs with
-python-poppler, then measures global and local Structural Similarity (SSIM). It
+For each matching page, the tool renders both PDFs as RGB PNGs with pypdfium2,
+then measures global and local Structural Similarity (SSIM). It
 exits with status `0` when every page passes and `1` when one or more pages
 fail, making it suitable for CI.
 
 ## Requirements
 
-- Python 3.10 or newer
-- python-poppler
-- The Poppler C++ development library and a C++ build toolchain, which are
-  needed to build python-poppler from source
-
-For example, on Debian or Ubuntu:
-
-```bash
-sudo apt install libpoppler-cpp-dev build-essential cmake python3-dev
-```
+- Python 3.11 or newer
+- pypdfium2 (installed automatically with this package)
 
 ## Distribution
 
@@ -118,7 +110,7 @@ The two positional arguments are required:
 | Option | Default | Description |
 | --- | ---: | --- |
 | `--dpi DPI` | `150` | Resolution used to render each PDF page. Higher values detect smaller visual changes but use more CPU, memory, and temporary disk space. |
-| `--jobs N` | CPU count | Maximum concurrent render or comparison operations. `N` must be at least 1. Lower it on memory-constrained machines. |
+| `--jobs N` | CPU count | Maximum concurrent comparison operations. `N` must be at least 1. PDF rendering is serialized because PDFium is not thread-safe. Lower it on memory-constrained machines. |
 | `--align N` | `0` | Search integer translations up to `N` pixels in each direction before calculating metrics. `0` disables alignment. |
 
 ### Metrics and thresholds
@@ -144,7 +136,8 @@ The two positional arguments are required:
 ## How a page passes
 
 An exactly equal rendered RGB image is reported as `PASS` with all similarity
-scores equal to `1.0`. Otherwise, the page passes if either condition is true:
+scores equal to `1.0`. Otherwise, the page is considered perceptually identical
+and passes if either condition is true:
 
 1. **Raw pass:** global SSIM is at least `--ssim`, the first percentile of tile
    SSIM is at least `--local-p01`, and the suspicious-tile fraction is at most
@@ -235,7 +228,7 @@ each result's `page` field rather than assuming array order.
 | `original`, `candidate` | Input paths as supplied to the command. |
 | `pages` | Common page count that was compared. |
 | `parameters` | Effective rendering, concurrency, alignment, and comparison settings. Preserve these with a report so scores remain reproducible. |
-| `summary.identical_pages` | Number of pages whose rendered RGB pixels were exactly equal. |
+| `summary.identical_pages` | Number of pages considered perceptually identical under the effective thresholds. |
 | `summary.passed_pages` / `failed_pages` | Counts based on each page's `verdict`. |
 | `results` | One object per compared page. `shift_x` and `shift_y` are the selected candidate translation in pixels. |
 

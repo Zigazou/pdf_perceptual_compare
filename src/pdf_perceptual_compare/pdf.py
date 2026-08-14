@@ -1,16 +1,16 @@
-"""PDF rendering helpers backed by the python-poppler bindings."""
+"""PDF rendering helpers backed by pypdfium2."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
-from concurrent.futures import Future, ThreadPoolExecutor, as_completed
+from concurrent.futures import Future, ProcessPoolExecutor, as_completed
+from contextlib import closing
 from pathlib import Path
 from sys import stderr
 
 from numpy import asarray, ndarray, uint8
 from PIL import Image
-from poppler import PageRenderer, load_from_file
-from poppler.document import Document
+from pypdfium2 import PdfDocument
 
 
 def die(message: str, code: int = 2) -> None:
@@ -27,10 +27,10 @@ def die(message: str, code: int = 2) -> None:
     raise SystemExit(code)
 
 
-def load_document(pdf: Path) -> Document:
-    """Load a PDF using python-poppler, with a CLI-friendly failure message."""
+def load_document(pdf: Path) -> PdfDocument:
+    """Load a PDF using pypdfium2, with a CLI-friendly failure message."""
     try:
-        return load_from_file(pdf)
+        return PdfDocument(pdf)
     except (OSError, RuntimeError, ValueError) as error:
         die(f"could not open PDF {pdf}: {error}")
 
@@ -38,7 +38,7 @@ def load_document(pdf: Path) -> Document:
 
 
 def page_count(pdf: Path) -> int:
-    """Return the number of pages reported by python-poppler.
+    """Return the number of pages reported by pypdfium2.
 
     Args:
         pdf (Path): The path to a PDF file.
@@ -47,9 +47,13 @@ def page_count(pdf: Path) -> int:
         int: The total page count of the PDF document.
 
     Raises:
-        SystemExit: If python-poppler cannot determine the page count.
+        SystemExit: If pypdfium2 cannot determine the page count.
     """
-    return load_document(pdf).pages
+    document = load_document(pdf)
+    try:
+        return len(document)
+    finally:
+        document.close()
 
 
 def render_page(pdf: Path, page: int, dpi: int, output_base: Path) -> Path:
@@ -65,27 +69,23 @@ def render_page(pdf: Path, page: int, dpi: int, output_base: Path) -> Path:
         Path: The path to the generated PNG file.
 
     Raises:
-        SystemExit: If python-poppler fails to render an output file.
+        SystemExit: If pypdfium2 fails to render an output file.
     """
     output = output_base.with_suffix(".png")
 
     try:
-        document = load_document(pdf)
-        image = PageRenderer().render_page(
-            document.create_page(page - 1),
-            xres=dpi,
-            yres=dpi
-        )
-
-        if not image.is_valid:
-            die(f"could not render page {page} of {pdf}")
-
-        image.save(str(output), "png", dpi)
+        with (
+            closing(load_document(pdf)) as document,
+            closing(document.get_page(page - 1)) as pdf_page,
+            closing(pdf_page.render(scale=dpi // 72)) as bitmap,
+            closing(bitmap.to_pil()) as image,
+        ):
+            image.save(output, "PNG", dpi=(dpi, dpi))
     except (OSError, RuntimeError, ValueError) as error:
         die(f"could not render page {page} of {pdf}: {error}")
 
     if not output.exists():
-        die(f"python-poppler did not produce {output}")
+        die(f"pypdfium2 did not produce {output}")
 
     return output
 
@@ -101,9 +101,10 @@ def render_page_pairs(
 ) -> list[tuple[Path, Path]]:
     """Render matching pages concurrently and return their paths in page order.
 
-    Renders each page of both ``original`` and ``candidate`` PDFs at the
+    Schedules each page of both ``original`` and ``candidate`` PDFs at the
     specified DPI to PNG format using a thread pool, storing results as separate
-    files prefixed with 'a-' and 'b-'.
+    files prefixed with 'a-' and 'b-'. PDFium calls are serialized because the
+    underlying library is not thread-safe.
 
     Args:
         original (Path): The source PDF file for comparison.
@@ -121,12 +122,9 @@ def render_page_pairs(
             candidate_page_path)``.
 
     Raises:
-        SystemExit: If python-poppler fails to produce an output file.
+        SystemExit: If pypdfium2 fails to produce an output file.
     """
-    with ThreadPoolExecutor(
-        max_workers=jobs,
-        thread_name_prefix="pdf-render"
-    ) as executor:
+    with ProcessPoolExecutor(max_workers=jobs) as executor:
         original_futures: dict[int, Future[Path]] = {}
         candidate_futures: dict[int, Future[Path]] = {}
 

@@ -378,7 +378,6 @@ def compare_page(
             failure_dir / f"page-{page:04d}"
         )
 
-    # Return the page result with all relevant metrics and the final verdict.
     return PageResult(
         page=page,
         identical=False,

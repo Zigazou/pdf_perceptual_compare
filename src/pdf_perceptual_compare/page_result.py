@@ -13,7 +13,8 @@ class PageResult:
 
     Attributes:
         page (int): The page number for which this result applies.
-        identical (bool): Whether the two pages are visually identical.
+        identical (bool): Whether the two pages are perceptually identical
+            according to the configured thresholds.
         shift_x (int): Horizontal pixel shift between the two pages.
         shift_y (int): Vertical pixel shift between the two pages.
         ssim (float): Structural Similarity Index Measure value, closer to 1
